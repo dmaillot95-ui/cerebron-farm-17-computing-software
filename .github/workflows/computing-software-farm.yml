@@ -1,0 +1,61 @@
+name: CEREBRON Farm 17 Computing Software
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          roles=[
+          ('SOFTWARE_ARCHITECT','architecture and interfaces'),('DISTRIBUTED_SYSTEMS','consensus consistency scalability'),('DATABASE_SPECIALIST','data models transactions storage'),('NETWORK_SYSTEMS','protocols latency resilience'),('COMPILER_RUNTIME','compilers runtimes languages'),('OPERATING_SYSTEMS','process memory IO scheduling'),('ALGORITHMS_PERFORMANCE','algorithms complexity profiling'),('CLOUD_PLATFORM','cloud containers orchestration'),('DEVOPS_CICD','build release deployment pipelines'),('SRE_RELIABILITY','SLO availability incident response'),('OBSERVABILITY','logs metrics traces diagnostics'),('SECURITY_AUDITOR','threat model secure design'),('TEST_ENGINEER','unit integration property testing'),('FORMAL_METHODS','specification invariants verification'),('API_INTEGRATION','APIs contracts interoperability'),('DATA_ENGINEERING','pipelines data quality provenance'),('CODE_REVIEWER','correctness maintainability defects'),('RED_TEAM','adversarial failure analysis'),('REPLICATOR','independent reproduction and checks'),('OMEGA_SYNTHESIZER','cross-role synthesis and final evidence judgment')]
+          models=['huggingface-projects/llama-3.2-3B-Instruct','huggingface-projects/gemma-2-9b-it']
+          inc=[{'role':r,'focus':f,'model':models[i%2]} for i,(r,f) in enumerate(roles)]
+          print('matrix='+json.dumps({'include':inc}))
+          PY
+  worker:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install -q hf-gradio
+      - env:
+          ROLE: ${{ matrix.role }}
+          FOCUS: ${{ matrix.focus }}
+          MODEL: ${{ matrix.model }}
+        run: python scripts/software_agent.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: farm17-${{ matrix.role }}
+          path: out/${{ matrix.role }}.json
+  omega-fusion:
+    if: always()
+    needs: worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'farm17-*', path: packets, merge-multiple: true}
+      - run: |
+          python - <<'PY'
+          import glob,json
+          fs=glob.glob('packets/*.json')
+          rows=[json.load(open(f)) for f in fs]
+          out={'farm':'17-computing-software','roles_returned':len(rows),'successful_external_ai_calls':sum(bool(x.get('success')) for x in rows),'model_families':sorted(set(x.get('model','') for x in rows)),'epistemic_status':'UNREVIEWED_EXTERNAL_AGENT_OUTPUT','results':rows}
+          open('farm17-omega.json','w').write(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: farm17-omega-packet
+          path: farm17-omega.json
